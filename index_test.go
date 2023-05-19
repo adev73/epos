@@ -2,68 +2,62 @@ package epos
 
 import (
 	"bytes"
-	"reflect"
+	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestIndexSimple(t *testing.T) {
+	that := assert.New(t)
+
+	// Prepare
 	db, err := OpenDatabase("testdb_index", STORAGE_AUTO)
 	if err != nil {
-		t.Fatalf("couldn't open testdb_index: %v", err)
+		panic(fmt.Sprintf("couldn't open testdb_index: %v", err))
 	}
 	defer db.Close()
 
-	id, err := db.Coll("tbl").Insert(map[string]string{"foo": "bar", "baz": "quux", "bla": "fasel"})
-	if err != nil {
-		t.Error("Insert failed: ", err)
-	}
+	// Execute: Insert
+	firstId, err := db.Coll("tbl").Insert(map[string]string{"foo": "bar", "baz": "quux", "bla": "fasel"})
+	that.Nil(err)
+	that.Greater(firstId, Id(0))
 
-	t.Logf("insert id = %d", id)
-	if err = db.Coll("tbl").AddIndex("foo"); err != nil {
-		t.Fatal("AddIndex failed: ", err)
-	}
+	// Execute: AddIndex
+	err = db.Coll("tbl").AddIndex("foo")
+	that.Nil(err)
 
-	id, err = db.Coll("tbl").Insert(map[string]string{"foo": "abc", "baz": "def", "bla": "asdfqwer"})
-	if err != nil {
-		t.Error("Insert failed: ", err)
-	}
+	// Execute: Insert again
+	secondId, err := db.Coll("tbl").Insert(map[string]string{"foo": "abc", "baz": "def", "bla": "asdfqwer"})
+	that.Nil(err)
+	that.Greater(secondId, firstId)
 
-	// plausibility check on the internal data structures:
-	if idx := db.Coll("tbl").indexes["foo"]; idx == nil {
-		t.Error("no actual index has been created!")
-	} else if len(idx.data) != 2 {
-		t.Errorf("expected two entries to be in the index for foo, found only %d (index: %#v)", len(idx.data), idx)
-	} else {
-		t.Logf("index data for foo: %#v", idx.data)
-	}
+	// Validate internal data structures
+	that.NotNil(db.Coll("tbl").indexes["foo"])
+	that.Len(db.Coll("tbl").indexes["foo"].data, 2)
 
+	// Clean up
 	db.Remove()
 }
 
 func TestReadWriteIndex(t *testing.T) {
+	that := assert.New(t)
+
+	// Prepare
 	buf := bytes.NewBuffer([]byte{})
+	idx_written := &indexEntry{deleted: false, value: "value", id: 9001}
 
-	idx_entry := &indexEntry{deleted: false, value: "value", id: 9001}
+	// Execute
+	bytesWritten, err := idx_written.WriteTo(buf)
+	that.Nil(err)
 
-	n, err := idx_entry.WriteTo(buf)
-	if err != nil {
-		t.Fatalf("WriteTo failed: %v", err)
-	}
+	idx_read := &indexEntry{}
+	bytesRead, err := idx_read.ReadFrom(buf)
+	that.Nil(err)
 
-	entry2 := &indexEntry{}
-
-	m, err := entry2.ReadFrom(buf)
-	if err != nil {
-		t.Fatalf("ReadFrom failed: %v", err)
-	}
-
-	if n != m {
-		t.Errorf("different amounts of data were written and read (%d vs. %d)", n, m)
-	}
-
-	if !reflect.DeepEqual(idx_entry, entry2) {
-		t.Errorf("entry and entry2 are different! %#v vs. %#v", idx_entry, entry2)
-	}
+	// Evaluate
+	that.Equal(bytesWritten, bytesRead)
+	that.EqualValues(idx_written, idx_read)
 }
 
 type entry struct {
@@ -85,58 +79,52 @@ var testdata = []struct {
 }
 
 func TestIndexInsertUpdateDelete(t *testing.T) {
+
+	that := assert.New(t)
+
+	// Prepare
 	db, err := OpenDatabase("testdb_index_iud", STORAGE_AUTO)
 	if err != nil {
-		t.Fatalf("couldn't open testdb_index_iud: %v", err)
+		panic(fmt.Sprintf("couldn't open testdb_index_iud: %v", err))
 	}
 	defer db.Close()
 
 	coll := db.Coll("persons")
-
 	coll.AddIndex("X")
 
+	compareId := Id(0)
 	for i, e := range testdata {
 		id, err := coll.Insert(e.Entry)
-		if err != nil {
-			t.Errorf("%d. Insert failed: %v", i, err)
-		}
+		that.Nil(err)               // Insert worked OK
+		that.Greater(id, compareId) // ID incremented
+
 		testdata[i].Id = id
 		testdata[i].Entry.X = e.NewX
 		testdata[i].Entry.Y = e.NewY
 		testdata[i].Entry.Z = e.NewZ
+
+		compareId = id
 	}
 
-	if len(coll.indexes["X"].data) != 3 {
-		t.Errorf("Index doesn't contain 3 entries for field X even though we just inserted 3 records, %d instead.", len(coll.indexes["X"].data))
-	}
+	// Verify that the index was created correctly
+	that.Len(coll.indexes["X"].data, 3)
 
+	// Verify that adding an index to an existing data set works
 	coll.AddIndex("Y")
+	that.Len(coll.indexes["Y"].data, 3)
 
-	if len(coll.indexes["Y"].data) != 3 {
-		t.Errorf("Index doesn't contain 3 entries for field Y, %d instead.", len(coll.indexes["Y"].data))
-	}
-
-	for i, e := range testdata {
+	// Verify that the updates work
+	for _, e := range testdata {
 		err := coll.Update(e.Id, e.Entry)
-		if err != nil {
-			t.Errorf("%d. Update failed: %v", i, err)
-		}
+		that.Nil(err)
 	}
 
-	if len(coll.indexes["X"].data) != 3 {
-		t.Errorf("Index doesn't contain 3 entries for field X even though we just updated 3 records, %d instead.", len(coll.indexes["X"].data))
-		t.Logf("index: %#v", coll.indexes["X"].data)
-	}
-	if len(coll.indexes["Y"].data) != 2 {
-		t.Errorf("Index doesn't contain 2 entries for field Y even though we just updated 3 records, %d instead.", len(coll.indexes["Y"].data))
-		t.Logf("index: %#v", coll.indexes["Y"].data)
-	}
-	if len(coll.indexes["Y"].data["19"]) != 2 {
-		t.Errorf("Index doesn't contain 2 IDs for data 19, %d instead.", len(coll.indexes["Y"].data["19"]))
-		t.Logf("index: %#v", coll.indexes["Y"].data["19"])
-	}
+	// Verify that the indexes are good
+	that.Len(coll.indexes["X"].data, 3)
+	that.Len(coll.indexes["Y"].data, 2)       // Two records ("19" and "42")
+	that.Len(coll.indexes["Y"].data["19"], 2) // Two records for index "19"
 
-	for i, e := range testdata {
+	for _, e := range testdata {
 		found := false
 		for k, v := range coll.indexes["X"].data {
 			if k == e.Entry.X && len(v) == 1 && v[0].id == int64(e.Id) {
@@ -144,27 +132,20 @@ func TestIndexInsertUpdateDelete(t *testing.T) {
 				break
 			}
 		}
-		if !found {
-			t.Errorf("%d. couldn't find entry in X index for data '%s'", i, e.Entry.X)
-		}
+		that.True(found, "couldn't find entry in X index for data: ", e.Entry.X)
 	}
 
-	for i, e := range testdata {
+	for _, e := range testdata {
 		err := coll.Delete(e.Id)
-		if err != nil {
-			t.Errorf("%d. Delete failed: %v", i, err)
-		}
+		that.Nil(err)
 	}
 
-	if len(coll.indexes["X"].data) != 0 {
-		t.Errorf("Index for X isn't empty: %v", coll.indexes["X"].data)
-	}
-	if len(coll.indexes["Y"].data) != 0 {
-		t.Errorf("Index for Y isn't empty: %v", coll.indexes["Y"].data)
-	}
+	that.Len(coll.indexes["X"].data, 0)
+	that.Len(coll.indexes["Y"].data, 0)
 
-	if err = db.Vacuum(); err != nil {
-		t.Errorf("Vacuum failed: %v", err)
-	}
+	err = db.Vacuum()
+	that.Nil(err)
+
+	// Clean up
 	db.Remove()
 }

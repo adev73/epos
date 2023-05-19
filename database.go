@@ -19,12 +19,10 @@
 //	for result.Next(&id, &data) {
 //		// handle data
 //	}
-//
 package epos
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 )
 
@@ -49,11 +47,11 @@ func OpenDatabase(path string, typ StorageType) (*Database, error) {
 	}
 
 	if typ == STORAGE_AUTO {
-		typ = STORAGE_LEVELDB
+		typ = STORAGE_DISKV
 	}
 
 	write_storage := false
-	storage_type, err := ioutil.ReadFile(db.path + "/engine")
+	storage_type, err := os.ReadFile(db.path + "/engine")
 	if err == nil {
 		db.storageFactory = storageBackends[StorageType(storage_type)]
 	} else {
@@ -66,7 +64,7 @@ func OpenDatabase(path string, typ StorageType) (*Database, error) {
 	}
 
 	if write_storage {
-		ioutil.WriteFile(db.path+"/engine", []byte(typ), 0644)
+		os.WriteFile(db.path+"/engine", []byte(typ), 0644)
 	}
 
 	return db, nil
@@ -78,8 +76,8 @@ func (db *Database) Close() error {
 	return nil
 }
 
-// Remove physically removes the database from the filesystem. WARNING: unless you 
-// have proper backups or snapshots from your filesystem, this operation is 
+// Remove physically removes the database from the filesystem. WARNING: unless you
+// have proper backups or snapshots from your filesystem, this operation is
 // irreversible and leads to permanent data loss.
 func (db *Database) Remove() error {
 	return os.RemoveAll(db.path)
@@ -90,7 +88,7 @@ func (db *Database) Remove() error {
 func (db *Database) Coll(name string) *Collection {
 	coll := db.colls[name]
 	if coll == nil {
-		coll = db.openColl(name)
+		coll = db.openCollection(name)
 		db.colls[name] = coll
 	}
 	return coll

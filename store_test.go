@@ -3,34 +3,35 @@ package epos
 import (
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStore(t *testing.T) {
+
+	that := assert.New(t)
+
+	// Prepare
 	db, err := OpenDatabase("testdb1", STORAGE_AUTO)
 	if err != nil {
-		t.Fatalf("couldn't open testdb1: %v", err)
+		panic(fmt.Sprintf("couldn't open testdb1: %v", err))
 	}
 	defer db.Close()
 
+	// Execute 1
 	id, err := db.Coll("foo").Insert([]string{"hello", "world!"})
-	if err != nil {
-		t.Errorf("couldn't insert string slice: %v", err)
-	}
-	if id != 1 {
-		t.Errorf("string slice id = %d (expected 1)", id)
-	}
+	that.Nil(err, "slice")
+	that.Equal(id, Id(1), "slice")
 
+	// Execute 2
 	id, err = db.Coll("foo").Insert(struct{ X, Y string }{X: "pan-galactic", Y: "gargle-blaster"})
-	if err != nil {
-		t.Errorf("couldn't insert struct: %v", err)
-	}
-	if id != 2 {
-		t.Errorf("struct id = %d (expected 2)", id)
-	}
+	that.Nil(err, "struct")
+	that.Equal(id, Id(2), "struct")
 
-	if err = db.Remove(); err != nil {
-		t.Errorf("db.Remove failed: %v", err)
-	}
+	// Execute 3 & clean up
+	err = db.Remove()
+	that.Nil(err)
+
 }
 
 var benchmarkData = struct {
@@ -49,18 +50,10 @@ func BenchmarkInsertDiskv(b *testing.B) {
 	benchmarkInsert(b, STORAGE_DISKV)
 }
 
-func BenchmarkInsertLevelDB(b *testing.B) {
-	benchmarkInsert(b, STORAGE_LEVELDB)
-}
-
-func BenchmarkInsertGoLevelDB(b *testing.B) {
-	benchmarkInsert(b, STORAGE_GOLEVELDB)
-}
-
 func benchmarkInsert(b *testing.B, typ StorageType) {
 	b.StopTimer()
 
-	db, _ := OpenDatabase(fmt.Sprintf("testdb_bench_insert_%d", typ), typ)
+	db, _ := OpenDatabase(fmt.Sprintf("testdb_bench_insert_%s", typ), typ)
 
 	b.StartTimer()
 
@@ -80,18 +73,10 @@ func BenchmarkUpdateDiskv(b *testing.B) {
 	benchmarkUpdate(b, STORAGE_DISKV)
 }
 
-func BenchmarkUpdateLevelDB(b *testing.B) {
-	benchmarkUpdate(b, STORAGE_LEVELDB)
-}
-
-func BenchmarkUpdateGoLevelDB(b *testing.B) {
-	benchmarkUpdate(b, STORAGE_GOLEVELDB)
-}
-
 func benchmarkUpdate(b *testing.B, typ StorageType) {
 	b.StopTimer()
 
-	db, _ := OpenDatabase(fmt.Sprintf("testdb_bench_update_%d", typ), typ)
+	db, _ := OpenDatabase(fmt.Sprintf("testdb_bench_update_%s", typ), typ)
 
 	id, err := db.Coll("bench").Insert(benchmarkData)
 	if err != nil {
@@ -114,14 +99,6 @@ func benchmarkUpdate(b *testing.B, typ StorageType) {
 
 func BenchmarkDeleteDiskv(b *testing.B) {
 	benchmarkDelete(b, STORAGE_DISKV)
-}
-
-func BenchmarkDeleteLevelDB(b *testing.B) {
-	benchmarkDelete(b, STORAGE_LEVELDB)
-}
-
-func BenchmarkDeleteGoLevelDB(b *testing.B) {
-	benchmarkDelete(b, STORAGE_GOLEVELDB)
 }
 
 func benchmarkDelete(b *testing.B, typ StorageType) {

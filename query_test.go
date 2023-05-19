@@ -2,6 +2,8 @@ package epos
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type book struct {
@@ -22,6 +24,10 @@ var queryData = []book{
 }
 
 func TestQueries(t *testing.T) {
+
+	that := assert.New(t)
+
+	// Prepare
 	db, err := OpenDatabase("testdb_queries", STORAGE_AUTO)
 	if err != nil {
 		t.Fatalf("couldn't open testdb_queries: %v", err)
@@ -39,53 +45,45 @@ func TestQueries(t *testing.T) {
 		}
 	}
 
-	result, err := books.QueryId(1)
-	if err != nil {
-		t.Errorf("query for ID 1 failed: %v", err)
-	}
+	// Execute: Query on ID
+	var b1 book
+	queryById, err := books.QueryId(1)
+	that.Nil(err)
 
-	var b book
-	if result.Next(nil, &b) != true {
-		t.Errorf("couldn't fetch item with ID 1")
-	}
-	if b.Title != "Fables" {
-		t.Errorf("expected book with ID 1 to be Fables, got %s instead.", b.Title)
-	}
-	if result.Next(nil, &b) != false {
-		t.Errorf("expected end of results, got another result: %#v", b)
-	}
+	that.True(queryById.Next(nil, &b1))
+	that.Equal("Fables", b1.Title)
+	that.False(queryById.Next(nil, &b1))
 
-	result, err = books.Query(&Equals{Field: "Author", Value: "Mark Twain"})
+	// Execute: Query on ID
+	var b2 book
 	var id Id
-	i := 0
-	for result.Next(&id, &b) {
-		if b.Author != "Mark Twain" {
-			t.Errorf("queried for books of Mark Twain, got author %s instead.", b.Author)
-		}
-		i++
+	queryByAuthor, err := books.Query(&Equals{Field: "Author", Value: "Mark Twain"})
+	that.Nil(err)
+	countByAuthor := 0
+	for queryByAuthor.Next(&id, &b2) {
+		that.Equal("Mark Twain", b2.Author)
+		countByAuthor++
 	}
-	if i != 2 {
-		t.Errorf("expected 2 Mark Twain books, got %d instead.", i)
-	}
+	that.Equal(2, countByAuthor)
 
+	// Prepare index
 	books.AddIndex("Pages")
 
-	result, err = books.Query(&Or{&Equals{Field: "Author", Value: "Aesop"}, &Equals{Field: "Pages", Value: "270"}})
-	i = 0
-	for result.Next(nil, &b) {
-		if b.Pages != 270 && b.Pages != 239 {
-			t.Errorf("got unexpected book in query: %#v", b)
-		}
-		i++
+	// Execute
+	var b3 book
+	queryUsingIndex, err := books.Query(&Or{&Equals{Field: "Author", Value: "Aesop"}, &Equals{Field: "Pages", Value: "270"}})
+	that.Nil(err)
+	countByIndex := 0
+	for queryUsingIndex.Next(nil, &b3) {
+		that.Contains([]int{270, 239}, b3.Pages)
+		that.Contains([]string{"Aesop", "Mark Twain"}, b3.Author)
+		countByIndex++
 	}
-	if i != 2 {
-		t.Errorf("expected 2 results from query, got %d instead.", i)
-	}
+	that.Equal(2, countByIndex)
 
 	_, err = books.Query(&Equals{Field: "Name", Value: "Fables"})
-	if err == nil {
-		t.Errorf("queried for a field that isn't indexed and expected an error, but didn't get one.")
-	}
+	that.NotNil(err)
 
+	// Clean up
 	db.Remove()
 }

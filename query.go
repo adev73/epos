@@ -51,7 +51,7 @@ func getFields(q Condition) []string {
 	}
 
 	fields := []string{}
-	for k, _ := range fields_map {
+	for k := range fields_map {
 		fields = append(fields, k)
 	}
 

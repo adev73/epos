@@ -104,7 +104,7 @@ func makeSet(ids []Id) map[Id]bool {
 
 func setToSlice(set map[Id]bool) []Id {
 	ids := []Id{}
-	for id, _ := range set {
+	for id := range set {
 		ids = append(ids, id)
 	}
 	return ids
@@ -112,7 +112,7 @@ func setToSlice(set map[Id]bool) []Id {
 
 func intersectSets(a, b map[Id]bool) map[Id]bool {
 	set := make(map[Id]bool)
-	for k, _ := range a {
+	for k := range a {
 		set[k] = b[k]
 	}
 	return set

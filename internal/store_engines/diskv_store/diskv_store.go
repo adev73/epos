@@ -1,8 +1,10 @@
-package epos
+package diskv_store
 
 import (
 	"fmt"
-	"github.com/peterbourgon/diskv"
+
+	"github.com/akrennmair/epos"
+	diskv "github.com/peterbourgon/diskv/v3"
 )
 
 type DiskvStorageBackend struct {
@@ -25,7 +27,7 @@ func transformFunc(s string) []string {
 	return []string{data[2:4], data[0:2]}
 }
 
-func NewDiskvStorageBackend(path string) StorageBackend {
+func NewDiskvStorageBackend(path string) epos.StorageBackend {
 	diskv := &DiskvStorageBackend{
 		store: diskv.New(diskv.Options{
 			BasePath:     path,
@@ -50,5 +52,5 @@ func (s *DiskvStorageBackend) Erase(key string) error {
 }
 
 func (s *DiskvStorageBackend) Keys() <-chan string {
-	return s.store.Keys()
+	return s.store.Keys(nil)
 }

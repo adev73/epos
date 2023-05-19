@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Collection struct {
@@ -17,9 +18,11 @@ type Collection struct {
 	indexes   map[string]*index
 }
 
+var logger = logrus.New()
+
 type Id int64
 
-func (db *Database) openColl(name string) *Collection {
+func (db *Database) openCollection(name string) *Collection {
 	// create/open collection
 	coll := &Collection{store: db.storageFactory(db.path + "/colls/" + name), indexpath: db.path + "/indexes/" + name, indexes: make(map[string]*index)}
 
@@ -38,7 +41,7 @@ func (c *Collection) loadIndexes() {
 	filepath.Walk(c.indexpath, func(path string, info os.FileInfo, err error) error {
 		if (info.Mode() & os.ModeType) == 0 {
 			if err := c.loadIndex(path, filepath.Base(path)); err != nil {
-				log.Printf("loadIndex %s failed: %v", path, err)
+				logger.Errorf("loadIndex %s failed: %v", path, err)
 				// TODO: should we maybe remove or rebuild index?
 			}
 		}
@@ -150,8 +153,8 @@ func (c *Collection) addToIndexes(id Id, jsondata []byte) error {
 	return nil
 }
 
-// AddIndex creates an index for a field. Existing records will be indexed, and 
-// future insert and update operations will index that field, as well. If an 
+// AddIndex creates an index for a field. Existing records will be indexed, and
+// future insert and update operations will index that field, as well. If an
 // index for that field already exists, the AddIndex() is a no-op.
 //
 // A field describes a top-level element of a struct or a particular key of a map.
@@ -179,12 +182,12 @@ func (c *Collection) AddIndex(field string) error {
 		var entry map[string]interface{}
 		data, err := c.store.Read(id_str)
 		if err != nil {
-			log.Printf("AddIndex: skipping key %s because read from store failed: %v", id_str, err)
+			logger.Warnf("AddIndex: skipping key %s because read from store failed: %v", id_str, err)
 			continue
 		}
 
 		if err = json.Unmarshal(data, &entry); err != nil {
-			log.Printf("AddIndex: skipping key %s because unmarshaling failed: %v", id_str, err)
+			logger.Warnf("AddIndex: skipping key %s because unmarshaling failed: %v", id_str, err)
 			continue
 		}
 
@@ -192,7 +195,7 @@ func (c *Collection) AddIndex(field string) error {
 			entry := indexEntry{deleted: false, value: fmt.Sprintf("%v", value), id: id}
 			fpos, _ := file.Seek(0, os.SEEK_END)
 			if _, err := entry.WriteTo(file); err != nil {
-				log.Printf("AddIndex: writing to index file failed: %v", err)
+				logger.Errorf("AddIndex: writing to index file failed: %v", err)
 				c.RemoveIndex(field)
 				return err
 			}
@@ -237,7 +240,7 @@ func (c *Collection) removeFromIndexes(id Id) {
 				if e.id != int64(id) {
 					new_entries = append(new_entries, e)
 				} else {
-					idx.file.Seek(e.fpos, os.SEEK_SET)
+					idx.file.Seek(e.fpos, io.SeekStart)
 					e.deleted = true
 					e.WriteTo(idx.file)
 					idx.file.Sync()
@@ -258,10 +261,10 @@ func (c *Collection) Delete(id Id) error {
 	return c.store.Erase(fmt.Sprintf("%d", id))
 }
 
-// Vacuum expunges old entries that refer to deleted objects from all indexes 
+// Vacuum expunges old entries that refer to deleted objects from all indexes
 // of a collection.
 func (c *Collection) Vacuum() error {
-	for field, _ := range c.indexes {
+	for field := range c.indexes {
 		oldf, err := os.Open(c.indexpath + "/" + field)
 		if err != nil {
 			return err

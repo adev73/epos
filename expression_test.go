@@ -2,9 +2,14 @@ package epos
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestExpressionParser(t *testing.T) {
+
+	that := assert.New(t)
+
 	testdata := []struct {
 		Expr       string
 		ShouldFail bool
@@ -20,16 +25,12 @@ func TestExpressionParser(t *testing.T) {
 		{"(and)", true},
 	}
 
-	for i, tt := range testdata {
+	for _, tt := range testdata {
 		_, err := Expression(tt.Expr)
-		if !tt.ShouldFail {
-			if err != nil {
-				t.Errorf("%d. parsing expression '%s' failed: %v", i, tt.Expr, err)
-			}
+		if tt.ShouldFail {
+			that.NotNil(err, "parsing expression succeded when it should have failed", tt.Expr)
 		} else {
-			if err == nil {
-				t.Errorf("%d. expression '%s' should have delivered an error, but parses fine.", i, tt.Expr)
-			}
+			that.Nil(err, "parsing expression failed when it should have succeeded", tt.Expr)
 		}
 	}
 }
